@@ -1,0 +1,12 @@
+- name: 获取linkis安装包
+  archive:
+    path: /usr/hdp/3.1.5.0-152/linkis
+    dest: /usr/hdp/3.1.5.0-152/linkis_dss.tar.gz
+    format: gz
+
+
+- name: DSS获取linkis安装包
+  fetch: 
+    src: /usr/hdp/3.1.5.0-152/linkis_dss.tar.gz
+    dest: /root/why/ansible_flymestudio/roles/install_dss/files/
+    flat: yes
