@@ -1,0 +1,41 @@
+- name: 部署exchangis安装包
+  unarchive:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+  with_items:
+    - { src: "exchangis.tar.gz", dest: "/usr/hdp/3.1.5.0-152/" }
+
+- name: 创建log目录
+  shell: |
+    mkdir -p /data/logs/exchangis
+    chown -R hadoop:hadoop /data/logs/exchangis
+    chmod -R 777  /data/logs/exchangis
+
+
+
+- name: 导入变量
+  include_vars:
+    file: /root/why/ansible_flymestudio/vars.yml
+
+- name: 部署数据库配置
+  shell: 
+    sed -i -e 's#mysql_host#{{ mysql_host }}#g' \
+           -e 's#mysql_port#{{ mysql_port }}#g' \
+           -e 's#mysql_user#{{ mysql_user }}#g' \
+           -e 's#mysql_password#{{ mysql_password }}#g' \
+           /usr/hdp/3.1.5.0-152/exchangis/config/db.sh
+
+
+- name: 部署config配置
+  shell: |
+    sed -i -e 's#linkis_name#{{ linkis_name }}#g' \
+           -e 's#eureka_defaultZone#{{ eureka_defaultZone }}#g' \
+           /usr/hdp/3.1.5.0-152/exchangis/config/config.sh
+
+
+- name: 部署exchangis组件
+  script: exchangis_install.sh
+
+
+- name: 启动exchangis组件
+  shell: su - hadoop -c "sh /usr/hdp/3.1.5.0-152/exchangis/sbin/daemon.sh start server"
