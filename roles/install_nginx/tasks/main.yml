@@ -1,0 +1,57 @@
+- name: IF NOT Cenos
+  stat: 
+    path: /etc/yum.repos.d/CentOS*
+  register: dir_status
+
+- name: MV Cenos
+  command: mv /etc/yum.repos.d/CentOS* /etc/yum.repos.d/bak
+  when: dir_status.stat.exists
+  
+
+- name: clean all
+  shell: yum clean all
+
+- name: makecache
+  shell: yum makecache
+
+
+- name: 部署nginx
+  shell: yum install -y nginx
+
+- name: 解压前端web资源
+  unarchive:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+  with_items:
+    - { src: "html.tar.gz", dest: "/etc/nginx/" }
+    - { src: "cert.tar.gz", dest: "/etc/nginx/" }
+- name: COPY nginx
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+  with_items:
+    - { src: "dss.conf", dest: "/etc/nginx/conf.d/" }
+    - { src: "exchangis.conf", dest: "/etc/nginx/conf.d/" }
+    - { src: "nginx.conf", dest: "/etc/nginx/" }
+
+- name: 调用变量
+  include_vars:
+    file: /root/why/ansible_flymestudio/vars.yml
+
+
+#- name: 替换dss.conf变量
+#  lineinfile:
+#    path: /etc/nginx/conf.d/dss.conf
+#    regexp: "{{ item.regexp }}"
+#    line: "{{ item.line }}"
+#  loop:
+#    - { regexp: '^server_name\\s+linkis-hostname;\\s*$', line: "server_name {{ linkis_name }};" }
+#    - { regexp: '^proxy_pass\\s+http://linkis-hostname:9001;\\s*$', line: "proxy_pass http://{{ linkis_name }}:9001;" }
+#    - { regexp: '^proxy_pass\\s+http://dolph-hostname:12345;\\s*$', line: "proxy_pass http://{{ dolph_name }}:12345;" }
+
+
+- name: 替换nginx变量
+  shell: |
+    sed -i 's#linkis-hostname#{{ linkis_name }}#g' /etc/nginx/conf.d/dss.conf
+    sed -i 's#dolph-hostname#{{ dolph_name }}#g' /etc/nginx/conf.d/dss.conf
+    sed -i 's#linkis-hostname#{{ linkis_name }}#g' /etc/nginx/conf.d/exchangis.conf
