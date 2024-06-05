@@ -1,0 +1,161 @@
+- name: yum部署
+  shell: |
+    yum clean all
+    yum makecache
+    yum install -y lsof telnet dos2unix expect
+
+    directories=(
+      "/data/logs/linkis"
+      "/data/logs/exchangis"
+      "/data02/skywalking"
+    )
+
+    for dir in "${directories[@]}"; do
+      mkdir -p "$dir"
+      chown -R hadoop:hadoop "$dir"
+      chmod -R 777 "$dir"
+    done
+
+    hadoop_commands=(
+      "hadoop fs -mkdir -p /tmp/linkis/log"
+      "hadoop fs -chgrp -R hadoop /tmp/linkis/log"
+      "hadoop fs -chmod 777 /tmp/linkis/log"
+    )
+
+    for cmd in "${hadoop_commands[@]}"; do
+      su - hadoop -c "$cmd"
+    done
+
+   
+ 
+- name: 解压linkis安装包
+  unarchive:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+  with_items:
+    - { src: "linkis.tar.gz", dest: "/usr/hdp/3.1.5.0-152/" }
+    - { src: "skywalking-agent.tar.gz", dest: "/data02/skywalking/"}
+  
+- name: 调用变量
+  include_vars:
+    file: /root/why/ansible_flymestudio/vars.yml
+ 
+
+
+- name: 替换linkis_db变量
+  shell: |
+    sed -i -e 's#mysql_host#{{ mysql_host }}#g' \
+           -e 's#mysql_port#{{ mysql_port }}#g' \
+           -e 's#mysql_db#{{ mysql_db }}#g' \
+           -e 's#mysql_user#{{ mysql_user }}#g' \
+           -e 's#mysql_password#{{ mysql_password }}#g' \
+           -e 's|hive_meta_url|{{ hive_meta_url | regex_escape }}|g' \
+           -e 's#hive_meta_user_linkis#{{ hive_meta_user_linkis }}#g' \
+           -e 's#hive_meta_password_linkis#{{ hive_meta_password_linkis }}#g' \
+           /usr/hdp/3.1.5.0-152/linkis/deploy-config/db.sh
+
+
+- name: 配置linkis变量
+  shell: |
+    sed -i -e 's#yarn_restful_url#"{{ yarn_restful_url }}"#g' \
+           -e 's#presto_url#{{ presto_url }}#g' \
+           /usr/hdp/3.1.5.0-152/linkis/deploy-config/linkis-env.sh
+
+
+- name: 配置linkis环境变量
+  shell: | 
+    sed -i -e 's#yarn_restful_url#"{{ yarn_restful_url }}"#g' \
+           -e 's#presto_url#{{ presto_url }}#g' \
+           /usr/hdp/3.1.5.0-152/linkis/conf/linkis-env.sh
+
+- name: 配置linkis.properties文件
+  replace:
+    path: "{{ item.path }}"
+    regexp: "{{ item.regexp }}"
+    replace: "{{ item.replace }}"
+  with_items:
+    - { path: "/usr/hdp/3.1.5.0-152/linkis/conf/linkis.properties",regexp: 'linkis_defaultZone', replace: "{{ linkis_defaultZone }}" }
+    - { path: "/usr/hdp/3.1.5.0-152/linkis/conf/linkis.properties",regexp: 'linkis_name', replace: "{{ linkis_name }}" }
+    - { path: "/usr/hdp/3.1.5.0-152/linkis/conf/linkis.properties",regexp: 'mysql_host', replace: "{{ mysql_host }}" }
+
+- name: 修改dml.sql
+  shell: |
+    sed -i -e 's#yarn_restful_url#"{{ yarn_restful_url }}"#g' \
+           /usr/hdp/3.1.5.0-152/linkis/db/linkis_dml.sql
+
+
+- name: 配置linkis-ps-publicservice.properties文件
+  shell: |  
+    sed -i -e 's#hive.meta.url_linkis#{{ hive_meta_url_linkis }}#g' \
+           -e 's#hive_meta_user_linkis#{{ hive_meta_user_linkis }}#g' \
+           -e 's#hive_meta_password_linkis#{{ hive_meta_password_linkis }}#g' \
+           /usr/hdp/3.1.5.0-152/linkis/conf/linkis-ps-publicservice.properties
+
+- name: 配置application-eureka.yml文件
+  shell: |
+    sed -i -e 's#app_eureka#{{ app_eureka }}#g' \
+           -e 's#eureka_defaultZone#{{ eureka_defaultZone }}#g' \
+           /usr/hdp/3.1.5.0-152/linkis/conf/application-eureka.yml
+
+- name: 配置application-linkis.yml文件
+  shell: |
+    sed -i -e 's#app_linkis#{{ app_linkis }}#g' \
+           -e 's#linkis_defaultZone#{{ linkis_defaultZone }}#g' \
+           /usr/hdp/3.1.5.0-152/linkis/conf/application-linkis.yml
+
+
+
+- name: 部署linkis组件
+  script: linkis_install.sh
+  register: linkis_info
+
+- name: 打印元数据部署信息
+  debug: var=linkis_info.stdout_lines
+   
+
+- name: 更新eureka-HA配置
+  lineinfile:
+    path: "{{ item.path }}"
+    regexp: '      defaultZone:[ ]*.*$'
+    line: '      {{ item.value }}'
+  loop:
+    - { path: '/usr/hdp/3.1.5.0-152/linkis/conf/application-linkis.yml',value: 'defaultZone: {{ defaultZone }}' }
+    - { path: '/usr/hdp/3.1.5.0-152/linkis/conf/application-eureka.yml',value: 'defaultZone: {{ defaultZone }}' }
+
+
+- name: 更新properties文件
+  lineinfile:
+    path: "{{ item.path }}"
+    regexp: '^wds.linkis.eureka.defaultZone=[ ]*.*$'
+    line: 'wds.linkis.eureka.defaultZone={{ defaultZone }}'
+  loop:
+    - { path: '/usr/hdp/3.1.5.0-152/linkis/conf/linkis.properties' }
+
+
+- name: 停止linkis服务
+  shell: su - hadoop -c "sh /usr/hdp/3.1.5.0-152/linkis/sbin/linkis-stop-all.sh"
+
+
+- name: 启动linkis服务
+  shell: su - hadoop -c "sh /usr/hdp/3.1.5.0-152/linkis/sbin/linkis-start-all.sh"
+  register: start_info
+  tags:
+    - restart
+
+
+- name: 打印linkis启动信息
+  debug: var=start_info.stdout_lines
+  tags:
+    - restart
+
+
+
+- name: 检查端口是否运行
+  wait_for: port={{ item }} state=started delay=1 timeout=30
+  with_items: 
+    - 20303 
+    - 9102
+    - 9104
+    - 9101
+    - 9001
+    - 9105
