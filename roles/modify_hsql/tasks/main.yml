@@ -1,0 +1,14 @@
+- name: 去掉目录acl
+  shell: su hdfs -c "hadoop fs -setfacl -b -R /warehouse/tablespace/managed/hive"
+
+- name: 调用变量
+  include_vars:
+    file: /root/why/ansible_flymestudio/vars.yml
+
+- name: 修复HSQL乱码
+  shell: |
+    mysql -h{{ hive_host }} -uhive -p{{ hive_meta_password_linkis }} -P{{ hive_port }} -e "use hive; alter table PARTITION_KEYS modify column PKEY_COMMENT varchar(4000) character set utf8mb4;"
+    mysql -h{{ hive_host }} -uhive -p{{ hive_meta_password_linkis }} -P{{ hive_port }} -e "use hive; alter table COLUMNS_V2 modify column COMMENT varchar(256) character set utf8mb4;"
+    mysql -h{{ hive_host }} -uhive -p{{ hive_meta_password_linkis }} -P{{ hive_port }} -e "use hive; alter table TABLE_PARAMS modify column PARAM_KEY varchar(256) character set utf8mb4;"
+    mysql -h{{ hive_host }} -uhive -p{{ hive_meta_password_linkis }} -P{{ hive_port }} -e "use hive; alter table TABLE_PARAMS modify column PARAM_VALUE mediumtext character set utf8mb4;"
+    mysql -h{{ hive_host }} -uhive -p{{ hive_meta_password_linkis }} -P{{ hive_port }} -e "use hive; alter table PARTITION_PARAMS modify column PARAM_VALUE varchar(4000) character set utf8mb4;"
