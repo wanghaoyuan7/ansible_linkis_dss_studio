@@ -1,0 +1,219 @@
+- name: yum部署
+  shell: |
+    yum clean all
+    yum makecache
+    yum install -y lsof telnet dos2unix expect zip
+
+
+- name: 解压linkis安装包
+  unarchive:
+    owner: hadoop
+    group: hadoop
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+  with_items:
+    - { src: "linkis_dss.tar.gz", dest: "/usr/hdp/3.1.5.0-152/" }
+
+- name: linkis权限
+  shell: chown hadoop:hadoop /usr/hdp/3.1.5.0-152/linkis
+  
+
+
+- name: 创建 日志路径
+  shell: |
+    directories=(
+      "/data02/skywalking/"
+      "/data/logs/dssInstall"
+      "/data/logs/linkis"
+     )
+
+    for dir in "${directories[@]}"; do
+      mkdir -p "$dir"
+      chown -R hadoop:hadoop "$dir"
+      chmod -R 777 "$dir"
+    done
+
+
+
+- name: 启动linkis——HA组件
+  become: true
+  become_user: hadoop
+  shell: |
+    /usr/hdp/3.1.5.0-152/linkis/sbin/linkis-daemon.sh restart mg-eureka
+    /usr/hdp/3.1.5.0-152/linkis/sbin/linkis-daemon.sh restart linkis-cg-engineconnmanager
+
+- name: 检查端口是否运行
+  wait_for: port={{ item }} state=started delay=1 timeout=30
+  with_items:
+    - 20303   # LINKIS-MG-EUREKA
+    - 9102
+
+
+
+- name: COPY dss安装包
+  unarchive:
+    owner: hadoop
+    group: hadoop
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+  with_items:
+    - { src: "dssInstall.tar.gz", dest: "/usr/hdp/3.1.5.0-152/" }
+    - { src: "skywalking_agent_dss.tar.gz", dest: "/data02/skywalking/" }
+
+
+- name: 调用变量
+  include_vars:
+    file: /root/why/ansible_flymestudio/vars.yml
+
+
+- name: 修改数据库配置
+  shell: |
+    sed -i -e 's#mysql_host#{{ mysql_host }}#g' \
+           -e 's#mysql_port#{{ mysql_port }}#g' \
+           -e 's#mysql_user#{{ mysql_user }}#g' \
+           -e 's#mysql_password#{{ mysql_password }}#g' \
+           -e 's|hive_meta_url|{{ hive_meta_url | regex_escape }}|g' \
+           -e 's#hive_meta_user_linkis#{{ hive_meta_user_linkis }}#g' \
+           -e 's#hive_meta_password_linkis#{{ hive_meta_password_linkis }}#g' \
+           /usr/hdp/3.1.5.0-152/dssInstall/conf/db.sh 
+
+
+
+- name: 配置dss config文件
+  shell: |
+    sed -i -e 's#linkis_name#{{ linkis_name }}#g' \
+           -e 's#dss_name#{{ dss_name }}#g' \
+           -e 's#hive_meta_user_linkis#{{ hive_meta_user_linkis }}#g' \
+           -e 's|hive_meta_url|{{ hive_meta_url | regex_escape }}|g' \
+           -e 's#hive_meta_password_linkis#{{ hive_meta_password_linkis }}#g' \
+           /usr/hdp/3.1.5.0-152/dssInstall/conf/config.sh
+
+
+- name: 配置dss_HA
+  shell: |
+    sed -i -e 's#linkis_defaultZone#{{ linkis_defaultZone }}#g' \
+           /usr/hdp/3.1.5.0-152/dssInstall/conf/application-dss.yml
+
+
+- name: 删除索引
+  shell: rm -rf {{ item }}/index_*.index
+  args:
+    chdir: /usr/hdp/3.1.5.0-152/dssInstall/dss-appconns
+  loop:
+    - sso
+    - workflow
+    - sendemail
+    - exchangis
+    - datachecker
+    - datahub
+    - dolphinscheduler
+    - eventchecker
+
+- name: 部署DSS
+  script: dss_install.sh
+ 
+- name: 配置dss_ha
+  shell: |
+    sed -i -e 's#linkis_defaultZone#{{ linkis_defaultZone }}#g' \
+           /usr/hdp/3.1.5.0-152/dssInstall/conf/application-dss.yml
+
+
+- name: 启动DSS
+  shell: su - hadoop -c "sh /usr/hdp/3.1.5.0-152/dssInstall/sbin/dss-start-all.sh"
+  register: start_info
+  tags:
+    - restart
+
+- name: 打印dss启动信息
+  debug: var=start_info.stdout_lines
+  tags:
+    - restart
+
+- name: 检查DSS端口是否运行
+  wait_for: port={{ item }} state=started delay=1 timeout=30
+  with_items:
+    - 9202 #project-serve
+    - 9003 #orchestrator-server
+    - 9004 #apiservice-server
+    - 9005 #dss-workflow-server
+    - 9006 #dss-flow-execution-server
+    - 9008 #dss-scriptis-server
+    - 9210 #dss-guide-server
+
+
+
+- name: 配置APPCONN
+  shell: |
+    sed -i -e 's#dolphin_name#{{ dolphin_name }}#g' \ 
+           -e 's#dss_name#{{ dss_name }}#g' \
+           -e 's#linkis_name#{{ linkis_name }}#g' \
+           /usr/hdp/3.1.5.0-152/dssInstall/bin/install-default-appconn.sh
+   
+
+- name: 配置调度中心跳转
+  shell: sed -i 's#dolphin_name#{{ dolphin_name }}#g' /usr/hdp/3.1.5.0-152/dssInstall/conf/dss-workflow-server.properties
+
+
+
+
+- name: 修改DSS SQL
+  replace:
+    path: "{{ item.path }}"
+    regexp: "{{ item.regexp }}"
+    replace: "{{ item.replace }}"
+  with_items:
+    - { path: "/usr/hdp/3.1.5.0-152/dssInstall/dss-appconns/dolphinscheduler/db/init.sql",regexp: 'dolphin_name',replace: "{{ dolphin_name }}" }
+    - { path: "/usr/hdp/3.1.5.0-152/dssInstall/dss-appconns/dolphinscheduler/db/init_real.sql",regexp: 'dolphin_name',replace: "{{ dolphin_name }}" }
+    - { path: "/usr/hdp/3.1.5.0-152/dssInstall/dss-appconns/datahub/db/init.sql",regexp: 'datahu_name',replace: "{{ datahu_name }}" }
+    - { path: "/usr/hdp/3.1.5.0-152/dssInstall/dss-appconns/datahub/db/init_real.sql",regexp: 'datahu_name',replace: "{{ datahu_name }}" }
+    - { path: "/usr/hdp/3.1.5.0-152/dssInstall/dss-appconns/exchangis/db/init.sql",regexp: 'linkis_name',replace: "{{ linkis_name }}" }
+    - { path: "/usr/hdp/3.1.5.0-152/dssInstall/dss-appconns/exchangis/db/init_real.sql",regexp: 'linkis_name',replace: "{{ linkis_name }}" }
+    
+- name: 添加DOLP令牌TOKEN
+  replace:
+    path: "{{ item.path }}"
+    regexp: "{{ item.regexp }}"
+    replace: "{{ item.replace }}"
+  with_items:
+    - { path: "/usr/hdp/3.1.5.0-152/dssInstall/dss-appconns/dolphinscheduler/appconn.properties",regexp: 'dolphin_token', replace: "{{ dolphin_token }}" }
+
+
+- name: 部署APPCONN
+  script: appconn_dss.sh
+  register: app_info
+
+- name: 打印APPCONN部署信息
+  debug: var=app_info.stdout_lines
+
+
+
+- name: 重启 flymestudio
+  shell: su - hadoop -c "sh /usr/hdp/3.1.5.0-152/dssInstall/sbin/dss-start-all.sh"
+  register: dss_info
+  tags:
+    - restart
+
+- name: 打印dss启动信息
+  debug: var=dss_info.stdout_lines
+  tags:
+    - restart
+
+- name: 检查DSS端口
+  wait_for: port={{ item }} state=started delay=1 timeout=30
+  with_items:
+    - 9202 #project-serve
+    - 9003 #orchestrator-server
+    - 9004 #apiservice-server
+    - 9005 #dss-workflow-server
+    - 9006 #dss-flow-execution-server
+    - 9008 #dss-scriptis-server
+    - 9210 #dss-guide-server
+
+
+- name: 打印flymestudio信息
+  debug:
+    msg:
+      - "*****************************************************************"
+      - "   访问 https://{{ linkis_name }}/#/login-admin 查看访问信息     "
+      - "   密码: hadoop/hadoop                                           "
+      - "*****************************************************************"
