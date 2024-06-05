@@ -1,0 +1,302 @@
+- name: 创建Datahub目录结构
+  shell: |
+    directories=(
+      "/root/.datahub/mysql/init.sql"
+      "/root/.datahub/plugins/auth/resources"
+      "/root/.datahub/quickstart"
+    )
+
+    for dir in "${directories[@]}"; do
+      mkdir -p "$dir"
+    done
+
+
+- name: COPY dockerFile
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+  with_items:
+    - { src: "quickstart_version_mapping.yaml",dest: "/root/.datahub/quickstart" }
+    - { src: "docker-compose.yml",dest: "/root/.datahub/quickstart" }
+    - { src: "metadata_aspect_v2.sql",dest: "/data/" }
+    - { src: "metadata_index.sql",dest: "/data/" }
+- name: 调用变量
+  include_vars:
+    file: /root/why/ansible_flymestudio/vars.yml
+
+
+- name: 配置dockerFile
+  shell: |
+    sed -i -e 's#mysql_host#{{ mysql_host }}#g' \
+           /root/.datahub/quickstart/docker-compose.yml
+
+
+
+#- name: 创建datahub数据库 && IMPORT datahub
+#  shell: |
+#    mysql -h{{ mysql_host }} -u{{ mysql_user }} -p{{ mysql_password }} -P{{ mysql_port }} -e "set global validate_password_policy=LOW; set global validate_password_length=4;"
+#    mysql -h{{ mysql_host }} -u{{ mysql_user }} -p{{ mysql_password }} -P{{ mysql_port }} -e "CREATE USER 'datahub'@'%' IDENTIFIED BY 'datahub';"
+#    mysql -h{{ mysql_host }} -u{{ mysql_user }} -p{{ mysql_password }} -P{{ mysql_port }} -e "GRANT ALL PRIVILEGES ON *.* TO 'datahub'@'%' IDENTIFIED BY 'datahub' WITH GRANT OPTION;"
+#    mysql -h{{ mysql_host }} -udatahub -pdatahub -P{{ mysql_port }} -e "create database datahub;"
+#    mysql -h{{ mysql_host }} -udatahub -pdatahub -P{{ mysql_port }} -e "use datahub; source /data/metadata_aspect_v2.sql;"
+#    mysql -h{{ mysql_host }} -udatahub -pdatahub -P{{ mysql_port }} -e "use datahub; source /data/metadata_index.sql;"
+
+
+#- name: 设置MySQL密码策略
+#  command: >-
+#    mysql -h{{ mysql_host }} -u{{ mysql_user }} -p{{ mysql_password }} -P{{ mysql_port }}
+#    -e "SET GLOBAL validate_password_policy=LOW; SET GLOBAL validate_password_length=4;"
+
+#- name: 创建datahub用户
+#  command: >-
+#    mysql -h{{ mysql_host }} -u{{ mysql_user }} -p{{ mysql_password }} -P{{ mysql_port }}
+#    -e "CREATE USER 'datahub'@'%' IDENTIFIED BY 'datahub';"
+
+#- name: 刷新密码
+#  command: >-
+#    mysql -h{{ mysql_host }} -u{{ mysql_user }} -p{{ mysql_password }} -P{{ mysql_port }}
+#    -e "set password=password('Admin_123');"
+
+
+#- name: 授予datahub用户权限
+#  command: >-
+#    mysql -h{{ mysql_host }} -u{{ mysql_user }} -p{{ mysql_password }} -P{{ mysql_port }}
+#    -e "GRANT ALL PRIVILEGES ON *.* TO 'datahub'@'%' IDENTIFIED BY 'datahub' WITH GRANT OPTION; flush privileges;"
+
+#- name: 创建datahub数据库
+#  command: >-
+#    mysql -h{{ mysql_host }} -u{{ mysql_user }} -p{{ mysql_password }} -P{{ mysql_port }}
+#    -e "CREATE DATABASE IF NOT EXISTS datahub;"
+
+- name: 导入metadata_aspect_v2.sql到datahub数据库
+  shell: mysql -h{{ mysql_host }} -udatahub -pdatahub -P{{ mysql_port }} datahub < /data/metadata_aspect_v2.sql
+
+- name: 导入metadata_index.sql到datahub数据库
+  shell:  mysql -h{{ mysql_host }} -udatahub -pdatahub -P{{ mysql_port }} datahub < /data/metadata_index.sql
+
+
+
+
+
+- name: 卸载旧版本Docker
+  yum: 
+    name:
+      - docker
+      - docker-client
+      - docker-client-latest
+      - docker-common
+      - docker-latest
+      - docker-latest-logrotate
+      - docker-logrotate
+      - docker-engine
+    state: absent
+
+
+- name: 清理YUM缓存
+  command: yum clean all
+
+
+- name: 更新本地YUM缓存数据
+  command: yum makecache
+      
+
+- name: 部署YUM-utils工具
+  yum:
+    name:
+      - yum-utils
+    state: present
+
+- name: 设置存储库
+  get_url:
+    url: https://download.docker.com/linux/centos/docker-ce.repo
+    dest: /etc/yum.repos.d/docker-ce.repo
+
+
+- name: 部署Docker
+  yum:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+
+
+- name: 创建docker-compose软连接
+  shell: ln -s /usr/libexec/docker/cli-plugins/docker-compose /usr/bin/
+
+
+- name: 启动Docker && 开机自启
+  systemd:
+    name: docker
+    state: started
+    enabled: yes
+
+- name: 验证Docker
+  command: docker info
+  register: docker_log
+
+- name: 打印版本
+  debug: 
+    var: docker_log.stdout_lines
+
+
+- name: 部署python3依赖
+  yum:
+    name: 
+      - libffi-devel
+      - zlib-devel
+      - bzip2-devel
+      - openssl-devel
+      - ncurses-devel
+      - sqlite-devel
+      - readline-devel
+      - tk-devel
+      - gdbm-devel
+      - db4-devel
+      - libpcap-devel
+      - xz-devel
+      - lsof
+    state: present
+
+- name: 创建Python路径
+  file:
+    path: /usr/local/python3/
+    state: directory
+   
+
+- name: UNARCHIVE Python
+  unarchive:
+    owner: root
+    group: root
+    src: "{{ item.src }}"
+    dest:  "{{ item.dest }}"
+  with_items:
+    - { src: "Python-3.9.17.tgz",dest: "/usr/local/python3/"}
+
+- name: 部署python3
+  shell: |
+    cd /usr/local/python3/Python-3.9.17
+    /usr/local/python3/Python-3.9.17/configure --prefix=/usr/local/python3 --with-ssl
+    make && make install
+    mv /usr/bin/python /usr/bin/python.bak
+    ln -s /usr/local/python3/bin/python3 /usr/bin/python
+    mv /usr/bin/pip /usr/bin/pip.bak
+    ln -s /usr/local/python3/bin/pip3 /usr/bin/pip
+
+
+
+- name: 验证python VERSION
+  command: python --version
+  register: python_info
+
+- name: 打印python版本
+  debug:
+    var: python_info.stdout_lines
+
+
+
+- name: 修改YUM脚本
+  shell: |
+    sed -i -e 's#python#python2.7#g' \
+           /usr/bin/yum
+
+- name: 修改urlgrabber-ext-down脚本
+  shell: |
+    sed -i -e 's#python#python2.7#g' \
+           /usr/libexec/urlgrabber-ext-down
+
+
+ 
+- name: 升级 PIP 
+  shell: python -m pip install --upgrade pip wheel setuptools
+
+- name: 部署Datahub客户端
+  shell: python -m pip install --upgrade acryl-datahub==0.10.5
+
+
+#- name: 卸载urllib3
+#  pip:
+#    name: urllib3
+#    state: absent
+#    executable: /usr/bin/python -m pip
+#  become: yes
+
+- name: 定制urllib3
+  shell: python -m pip install urllib3==1.26.6
+
+- name: 验证Datahub版本
+  shell: python -m datahub version
+  register: datahub_info 
+
+
+- name: 打印Datahub版本
+  debug:
+    var: datahub_info.stdout
+
+
+- name: 登录MCE
+  shell: docker login -u datahub -p HJDNfasczxSUD@46461AS registry.meizu.com
+
+- name: 拉取kafka镜像
+  shell: docker pull registry.meizu.com/datahub/datahub-kafka-setup:debug
+
+- name: 拉取mysql镜像
+  shell: docker pull registry.meizu.com/datahub/datahub-mysql-setup:debug
+
+- name: 拉取elasticsearch镜像
+  shell: docker pull registry.meizu.com/datahub/datahub-elasticsearch-setup:debug
+
+- name: 拉取gms镜像
+  shell: docker pull registry.meizu.com/datahub/datahub-gms:debug
+
+- name: 拉取actions镜像
+  shell: docker pull registry.meizu.com/datahub/datahub-actions:head
+
+- name: 拉取mysql5.7镜像
+  shell: docker pull registry.meizu.com/datahub/mysql:5.7
+
+- name: cp-schema-registry:7.4.0
+  shell: docker pull registry.meizu.com/datahub/cp-schema-registry:7.4.0
+
+- name: cp-kafka:7.4.0
+  shell: docker pull registry.meizu.com/datahub/confluentinc/cp-kafka:7.4.0
+
+- name: cp-zookeeper:7.4.0
+  shell: docker pull registry.meizu.com/datahub/cp-zookeeper:7.4.0
+
+- name: elasticsearch:7.10.1
+  shell: docker pull registry.meizu.com/datahub/elasticsearch:7.10.1
+
+- name: datahub-frontend-react:debug
+  shell: docker pull registry.meizu.com/datahub/datahub-frontend-react:debug
+
+- name: mariadb:10.5.8
+  shell: docker pull registry.meizu.com/datahub/mariadb:10.5.8
+
+- name: datahub-upgrade
+  shell: docker pull registry.meizu.com/datahub/datahub-upgrade:debug
+
+- name: requests==2.31.0
+  shell: pip install requests==2.31.0
+
+- name: 启动DATAHUB
+  shell: python -m datahub docker quickstart --quickstart-compose-file /root/.datahub/quickstart/docker-compose.yml
+  register: data_hub
+ 
+- name: 打印启动日志
+  debug:
+    var: data_hub.stdout_lines
+
+- name: 检查datahub端口
+  wait_for: port={{ item }} state=started delay=1 timeout=30
+  with_items:
+    - 9002
+
+- name: 输出datahub WEBUI 信息
+  debug:
+    msg:
+      - "*****************************************************************"
+      - " 访问 http://{{ datahu_name }}://9002 查看访问信息"
+      - "*****************************************************************"
