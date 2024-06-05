@@ -1,0 +1,24 @@
+- name: 检查JDK
+  shell: rpm -qa | grep jdk
+  register: jdk
+  changed_when: false
+  failed_when: false
+- name:
+  debug:
+    msg: "{{ jdk.stdout }}"
+  when: jdk.stdout != ""
+- name:
+  copy:
+    src: jdk-8u341-linux-x64.rpm
+    dest: /tmp
+- name: 部署JDK
+  shell: rpm -ivh /tmp/jdk-8u341-linux-x64.rpm
+  when: jdk.stdout == ""
+- name: 输出JDK版本
+  shell: java -version 2>&1
+  register: ver
+  changed_when: false
+  failed_when: false
+- name:
+  debug:
+    msg: "{{ ver.stdout }}"
