@@ -1,0 +1,16 @@
+quickstart_version_map:
+  default:
+    composefile_git_ref: master
+    docker_tag: head
+  head:
+    composefile_git_ref: master
+    docker_tag: head
+  stable:
+    composefile_git_ref: v0.13.2
+    docker_tag: v0.13.2
+  v0.13.0:
+    composefile_git_ref: master
+    docker_tag: v0.13.0
+  v0.9.6:
+    composefile_git_ref: v0.9.6.1
+    docker_tag: v0.9.6.1
