@@ -1,0 +1,44 @@
+---
+#mysql配置
+mysql_host: xxx
+mysql_port: 3306
+mysql_db: xxx
+mysql_user: root
+mysql_password: Admin_123
+
+#hive元数据配置
+hive_meta_url: jdbc:mysql://xxxxxx:3306/hive?createDatabaseIfNotExist=true&useSSL=false
+hive_meta_url_linkis: xxxxx/hive
+hive_meta_user_linkis: root
+hive_meta_password_linkis: Admin_123
+hive_host: xxxx
+hive_port: 3306
+
+
+#linkis配置
+linkis_name: xxxxx
+dolph_name: xxxxx
+yarn_restful_url: "http://xxxx:8088"
+app_eureka: xxxxx
+eureka_defaultZone: http://xxxxxx:xxxx/eureka/,http://xxxx:xxxx/eureka/
+app_linkis: x
+linkis_defaultZone: http://xxxxx:xxxx/eureka/,http://xxxxxx:xxx/eureka/
+presto_url: http://xxxx:xxxx
+defaultZone: http://xxxxxx:xxxxxx/eureka/,http://xxxxx:xxxx/eureka/
+
+
+#dss配置
+dss_name: xxxxx
+appconn_install_dolph_name: xxxx
+appconn_install_datahu: xxxx
+appconn_install_exchangis: xxxx
+
+#dolphin配置
+dolphin_name: xxxx
+dolphin_token: xxxx
+
+#datahu配置
+datahu_name: xxxx
+
+#YARN配置
+RESOURCEMANAGER: xxxx
