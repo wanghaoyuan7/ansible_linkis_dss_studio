@@ -1,0 +1,21 @@
+- name: 部署DOLP客户端
+  unarchive:
+    owner: dolphinscheduler 
+    group: dolphinscheduler
+    src: "{{ item.src }}"
+    dest: "{{item.dest }}"
+  with_items:
+    - { src: "dss-dolphinscheduler-client.tar.gz",dest: "/usr/hdp/3.1.5.0-152/"}
+
+- name: 调用变量
+  include_vars:
+    file: /root/why/ansible_flymestudio/vars.yml
+
+
+- name: 更新linkis.properties配置
+  replace:
+    path: "{{ item.path }}"
+    regexp: "{{ item.regexp }}"
+    replace: "{{ item.replace }}"
+  with_items:
+    - { path: "/usr/hdp/3.1.5.0-152/dss-dolphinscheduler-client/conf/linkis.properties",regexp: 'linkis_name',replace: "{{ linkis_name }}" } 
