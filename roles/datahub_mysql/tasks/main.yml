@@ -1,0 +1,25 @@
+- name: 设置MySQL密码策略
+  command: >-
+    mysql  -uroot -pAdmin_123
+    -e "SET GLOBAL validate_password_policy=LOW; SET GLOBAL validate_password_length=4;"
+
+- name: 创建datahub用户
+  command: >-
+    mysql  -uroot -pAdmin_123
+    -e "CREATE USER 'datahub'@'%' IDENTIFIED BY 'datahub';"
+
+- name: 刷新密码
+  command: >-
+    mysql  -uroot -pAdmin_123
+    -e "set password=password('Admin_123');"
+
+
+- name: 授予datahub用户权限
+  command: >-
+    mysql  -uroot -pAdmin_123
+    -e "GRANT ALL PRIVILEGES ON *.* TO 'datahub'@'%' IDENTIFIED BY 'datahub' WITH GRANT OPTION; flush privileges;"
+
+- name: 创建datahub数据库
+  command: >-
+    mysql  -uroot -pAdmin_123
+    -e "CREATE DATABASE IF NOT EXISTS datahub;"
