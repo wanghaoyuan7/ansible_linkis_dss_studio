@@ -1,0 +1,72 @@
+- name: 更新hosts文件
+  copy:
+    src: hosts
+    dest: /etc/
+
+
+
+- name: 配置环境变量
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+  with_items:
+    - { src: "hadoop.sh",dest: "/etc/profile.d/"}
+    - { src: "guava-30.0-jre.jar",dest: "/usr/hdp/3.1.5.0-152/spark3/jars" }
+    - { src: "spark-defaults.conf",dest: "/etc/spark3/conf/" }
+    - { src: "hosts",dest: "/etc" }
+
+- name: 调用变量
+  include_vars:
+    file: /root/why/ansible_flymestudio/vars.yml
+
+- name: 配置spark-defaults.conf文件
+  replace:
+    path: "{{ item.path }}"
+    regexp: "{{ item.regexp }}"
+    replace: "{{ item.replace }}"
+  with_items:
+    - { path: "/etc/spark3/conf/spark-defaults.conf",regexp: 'RESOURCEMANAGER',replace: "{{ RESOURCEMANAGER }}" }
+
+
+
+
+- name: 检查是否有hadoop用户
+  command: getent passwd hadoop
+  register: hadoop_user
+  ignore_errors: true
+
+- name: 创建hadoop用户
+  user:
+    name: hadoop
+    state: present
+  when: hadoop_user.rc !=0
+
+- name: 检查是否有hadoop用户组
+  command: getent passwd hadoop
+  register: hadoop_group
+  ignore_errors: true
+
+- name: 创建hadoop用户组
+  become: true
+  group:
+    name: hadoop
+    state: present
+  when: hadoop_group.rc !=0
+
+- name: 在文件中添加支持纯数字用户名配置
+  become: true
+  lineinfile:
+    path: /etc/sudoers
+    line: "Defaults    env_keep += \"SHADOW_ALLOW_ALL_NUMERIC_USER\""
+    state: present
+    create: yes
+    backup: yes
+
+- name: 在文件中添加hadoop免密配置
+  become: true
+  lineinfile:
+    path: /etc/sudoers
+    line: "hadoop ALL=(ALL) NOPASSWD: NOPASSWD: ALL"
+    state: present
+    create: yes
+    backup: yes
