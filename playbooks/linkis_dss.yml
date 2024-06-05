@@ -1,0 +1,84 @@
+---
+- name: 部署JDK
+  hosts: init
+  gather_facts: no
+  roles:
+    -  name: JDK_u_341
+  tags: JDK_u_341
+
+- name: 部署mysql
+  hosts: mysql
+  gather_facts: no
+  roles:
+    -  name: install_mysql
+  tags: install_mysql
+
+- name: 安装nginx
+  hosts: nginx
+  gather_facts: no
+  roles:
+    - name: install_nginx
+  tags: install_nginx
+
+- name: basisconfig
+  hosts: init
+  gather_facts: no
+  roles:
+    - name: basis_config
+  tags: basis_config
+
+- name: 部署modify_hsql
+  hosts: linkis
+  gather_facts: no
+  roles:
+    - name: modify_hsql
+  tags: modify_hsql
+
+- name: 安装linkis
+  hosts: linkis
+  gather_facts: no
+  roles:
+    - name: install_linkis
+  tags: install_linkis
+
+- name: 安装exchangis
+  hosts: linkis
+  gather_facts: no
+  roles:
+    - name: install_exchangis
+  tags: install_exchangis
+
+- name: 安装linkis_dss_HA
+  hosts: linkis
+  gather_facts: no
+  roles:
+    - name: linkis_dss_HA
+  tags: linkis_dss_HA
+
+- name: 部署dss
+  hosts: dss
+  gather_facts: no
+  roles:
+    - name: install_dss
+  tags: install_dss
+
+- name: 部署DOLP
+  hosts: dolp_work
+  gather_facts: no
+  roles:
+    - name: install_dolp
+  tags: install_dolp
+
+- name: 配置datahub数据库
+  hosts: linkis
+  gather_facts: no
+  roles:
+    - name: datahub_mysql
+  tags: datahub_mysql
+
+- name: 部署datahub
+  hosts: datahub
+  gather_facts: no
+  roles:
+    - name: install_datahub
+  tags: install_datahub
