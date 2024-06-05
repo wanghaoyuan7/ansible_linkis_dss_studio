@@ -1,0 +1,110 @@
+- name: IF NOT Cenos
+  stat:
+    path: /etc/yum.repos.d/CentOS*
+  register: dir_status
+
+- name: MV Cenos
+  command: mv /etc/yum.repos.d/CentOS* /etc/yum.repos.d/bak
+  when: dir_status.stat.exists
+
+
+- name: clean all
+  shell: yum clean all
+
+- name: makecache
+  shell: yum makecache
+
+- name: 检查mysql 
+  shell: rpm -qa |grep mysql
+  register: mysql
+  changed_when: false
+  failed_when: false
+- name:
+  debug:
+    msg: "{{ mysql.stdout }}"
+  when: mysql.stdout != ""
+- name: 
+  shell: yum -y install libaio net-tools perl
+
+- name: 检查 mariadb-libs 版本
+  shell: rpm -qa | grep mariadb-libs
+  register: mariadb
+  failed_when: false
+
+- name: 校验 mariadb 版本
+  shell: rpm -e --nodeps mariadb-libs
+  when: mariadb.stdout.find("mariadb-libs") != -1
+
+
+- name: CopyRPM
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+  with_items:
+    - { src: "mysql-community-common-5.7.38-1.el7.x86_64.rpm", dest: "/tmp" }
+    - { src: "mysql-community-libs-5.7.38-1.el7.x86_64.rpm", dest: "/tmp" }
+    - { src: "mysql-community-server-5.7.38-1.el7.x86_64.rpm", dest: "/tmp" }
+    - { src: "mysql-community-client-5.7.38-1.el7.x86_64.rpm", dest: "/tmp" }
+    - { src: "numactl-2.0.12-5.el7.x86_64.rpm", dest: "/tmp" }
+    - { src: "numactl-devel-2.0.12-5.el7.x86_64.rpm", dest: "/tmp" }
+    - { src: "numactl-libs-2.0.12-5.el7.x86_64.rpm", dest: "/tmp" }
+- name: 部署mysql
+  package:
+    name: 
+      - /tmp/mysql-community-common-5.7.38-1.el7.x86_64.rpm
+      - /tmp/mysql-community-libs-5.7.38-1.el7.x86_64.rpm
+      - /tmp/mysql-community-server-5.7.38-1.el7.x86_64.rpm
+      - /tmp/mysql-community-client-5.7.38-1.el7.x86_64.rpm
+      - /tmp/numactl-libs-2.0.12-5.el7.x86_64.rpm
+      - /tmp/numactl-devel-2.0.12-5.el7.x86_64.rpm
+      - /tmp/numactl-2.0.12-5.el7.x86_64.rpm
+    state: present
+
+
+- name:
+  command: systemctl stop mysqld
+- name: mysql初始话
+  lineinfile:
+    path: /etc/my.cnf
+    line: "skip-grant-tables"
+
+- name: 启动mysql
+  shell: systemctl start mysqld
+
+- name: 更改账号
+  script: mysql.sh
+
+- name: 关闭Mysql
+  command: systemctl stop mysqld
+
+- name: 删除skip-grant-tables
+  lineinfile:
+    path: /etc/my.cnf
+    state: absent
+    regexp: '^skip-grant-tables'
+- name: 追加my.cnf配置
+  lineinfile:
+    path: /etc/my.cnf
+    line: |
+      lower_case_table_names=1          # 配置表名不区分大小写
+      character-set-server=utf8          # 设置为默认编码为utf8
+      init_connect='SET NAMES utf8'
+      max_connections=1024             # 设置最大连接数
+      skip-name-resolve                 # 在连接远程数据库的时候，直接跳过MySQL的DNS解析 
+     
+
+
+- name: 重启mysql
+  shell: systemctl start mysqld
+
+- name: 权限最大化
+  script: mysql1.sh
+
+- name: 创建linkis
+  shell: mysql -uroot -pAdmin_123 -e "create database linkis_flyme;"
+
+- name: 创建dss
+  shell: mysql -uroot -pAdmin_123 -e "create database dss_flyme;"
+
+- name: 创建exchangis
+  shell: mysql -uroot -pAdmin_123 -e "create database exchangis_flyme;"
